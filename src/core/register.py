@@ -420,27 +420,18 @@ class RegistrationEngine:
         return None
 
     def _check_sentinel(self, did: str) -> Optional[str]:
-        """检查 Sentinel 拦截"""
+        """检查 Sentinel 拦截（使用完整 PoW token）"""
         try:
-            sen_req_body = f'{{"p":"","id":"{did}","flow":"authorize_continue"}}'
-
-            response = self.http_client.post(
-                OPENAI_API_ENDPOINTS["sentinel"],
-                headers={
-                    "origin": "https://sentinel.openai.com",
-                    "referer": "https://sentinel.openai.com/backend-api/sentinel/frame.html?sv=20260219f9f6",
-                    "content-type": "text/plain;charset=UTF-8",
-                },
-                data=sen_req_body,
+            token = _build_sentinel_token(
+                self.session, did,
+                flow="authorize_continue",
+                user_agent=self._OAUTH_UA,
             )
-
-            if response.status_code == 200:
-                sen_token = response.json().get("token")
-                self._log(f"Sentinel token 获取成功")
-                return sen_token
+            if token:
+                self._log("Sentinel token 获取成功")
             else:
-                self._log(f"Sentinel 检查失败: {response.status_code}", "warning")
-                return None
+                self._log("Sentinel token 生成失败", "warning")
+            return token
 
         except Exception as e:
             self._log(f"Sentinel 检查异常: {e}", "warning")
@@ -454,8 +445,6 @@ class RegistrationEngine:
             SignupFormResult: 提交结果，包含账号状态判断
         """
         try:
-            signup_body = f'{{"username":{{"value":"{self.email}","kind":"email"}},"screen_hint":"signup"}}'
-
             headers = {
                 "referer": "https://auth.openai.com/create-account",
                 "origin": "https://auth.openai.com",
@@ -465,13 +454,15 @@ class RegistrationEngine:
             headers.update(_make_trace_headers())
 
             if sen_token:
-                sentinel = f'{{"p": "", "t": "", "c": "{sen_token}", "id": "{did}", "flow": "authorize_continue"}}'
-                headers["openai-sentinel-token"] = sentinel
+                headers["openai-sentinel-token"] = sen_token
 
             response = self.session.post(
                 OPENAI_API_ENDPOINTS["signup"],
                 headers=headers,
-                data=signup_body,
+                json={
+                    "username": {"value": self.email, "kind": "email"},
+                    "screen_hint": "signup",
+                },
             )
 
             self._log(f"提交注册表单状态: {response.status_code}")
