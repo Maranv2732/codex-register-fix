@@ -145,7 +145,8 @@ class SentinelTokenGenerator:
         return "gAAAAAC" + data
 
 
-def _fetch_sentinel_challenge(session, device_id, flow="authorize_continue", user_agent=None, impersonate=None):
+def _fetch_sentinel_challenge(session, device_id, flow="authorize_continue", user_agent=None,
+                              sec_ch_ua=None, impersonate=None):
     """获取 Sentinel challenge"""
     generator = SentinelTokenGenerator(device_id=device_id, user_agent=user_agent)
     req_body = {"p": generator.generate_requirements_token(), "id": device_id, "flow": flow}
@@ -154,6 +155,9 @@ def _fetch_sentinel_challenge(session, device_id, flow="authorize_continue", use
         "Referer": "https://sentinel.openai.com/backend-api/sentinel/frame.html",
         "Origin": "https://sentinel.openai.com",
         "User-Agent": user_agent or "Mozilla/5.0",
+        "sec-ch-ua": sec_ch_ua or '"Not:A-Brand";v="99", "Google Chrome";v="131", "Chromium";v="131"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
     }
     kwargs = {"data": json.dumps(req_body), "headers": headers, "timeout": 20}
     if impersonate:
@@ -170,10 +174,12 @@ def _fetch_sentinel_challenge(session, device_id, flow="authorize_continue", use
         return None
 
 
-def _build_sentinel_token(session, device_id, flow="authorize_continue", user_agent=None, impersonate=None):
+def _build_sentinel_token(session, device_id, flow="authorize_continue", user_agent=None,
+                          sec_ch_ua=None, impersonate=None):
     """构建完整的 Sentinel token（含 PoW）"""
     challenge = _fetch_sentinel_challenge(session, device_id, flow=flow,
-                                          user_agent=user_agent, impersonate=impersonate)
+                                          user_agent=user_agent, sec_ch_ua=sec_ch_ua,
+                                          impersonate=impersonate)
     if not challenge:
         return None
     c_value = challenge.get("token", "")
@@ -428,6 +434,7 @@ class RegistrationEngine:
                 self.session, did,
                 flow="authorize_continue",
                 user_agent=self._OAUTH_UA,
+                impersonate="chrome131",
             )
             if token:
                 self._log("Sentinel token 获取成功")
@@ -454,6 +461,9 @@ class RegistrationEngine:
                 "content-type": "application/json",
                 "user-agent": self._OAUTH_UA,
                 "oai-device-id": did,
+                "sec-ch-ua": '"Not:A-Brand";v="99", "Google Chrome";v="131", "Chromium";v="131"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
             }
             headers.update(_make_trace_headers())
 
@@ -464,14 +474,19 @@ class RegistrationEngine:
                 OPENAI_API_ENDPOINTS["signup"],
                 headers=headers,
                 json={
-                    "username": {"value": self.email, "kind": "email"},
+                    "username": {"kind": "email", "value": self.email},
                     "screen_hint": "signup",
                 },
+                allow_redirects=False,
+                impersonate="chrome131",
             )
 
             self._log(f"提交注册表单状态: {response.status_code}")
 
             if response.status_code != 200:
+                # 详细记录 403 响应内容，便于调试
+                resp_body = response.text[:500] if response.text else "(empty)"
+                self._log(f"注册表单失败详情: {resp_body}", "warning")
                 return SignupFormResult(
                     success=False,
                     error_message=f"HTTP {response.status_code}: {response.text[:200]}"
@@ -515,17 +530,15 @@ class RegistrationEngine:
             self._log(f"生成密码: {password}")
 
             # 提交密码注册
-            register_body = json.dumps({
-                "password": password,
-                "username": self.email
-            })
-
             reg_headers = {
                 "referer": "https://auth.openai.com/create-account/password",
                 "origin": "https://auth.openai.com",
                 "accept": "application/json",
                 "content-type": "application/json",
                 "user-agent": self._OAUTH_UA,
+                "sec-ch-ua": '"Not:A-Brand";v="99", "Google Chrome";v="131", "Chromium";v="131"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
             }
             if self._device_id:
                 reg_headers["oai-device-id"] = self._device_id
@@ -535,6 +548,7 @@ class RegistrationEngine:
                 OPENAI_API_ENDPOINTS["register"],
                 headers=reg_headers,
                 json={"password": password, "username": self.email},
+                impersonate="chrome131",
             )
 
             self._log(f"提交密码状态: {response.status_code}")
@@ -597,6 +611,9 @@ class RegistrationEngine:
                 "origin": "https://auth.openai.com",
                 "accept": "application/json",
                 "user-agent": self._OAUTH_UA,
+                "sec-ch-ua": '"Not:A-Brand";v="99", "Google Chrome";v="131", "Chromium";v="131"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
             }
             if self._device_id:
                 otp_send_headers["oai-device-id"] = self._device_id
@@ -605,6 +622,7 @@ class RegistrationEngine:
             response = self.session.get(
                 OPENAI_API_ENDPOINTS["send_otp"],
                 headers=otp_send_headers,
+                impersonate="chrome131",
             )
 
             self._log(f"验证码发送状态: {response.status_code}")
@@ -648,6 +666,9 @@ class RegistrationEngine:
                 "accept": "application/json",
                 "content-type": "application/json",
                 "user-agent": self._OAUTH_UA,
+                "sec-ch-ua": '"Not:A-Brand";v="99", "Google Chrome";v="131", "Chromium";v="131"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
             }
             if self._device_id:
                 otp_headers["oai-device-id"] = self._device_id
@@ -657,6 +678,7 @@ class RegistrationEngine:
                 OPENAI_API_ENDPOINTS["validate_otp"],
                 headers=otp_headers,
                 json={"code": code},
+                impersonate="chrome131",
             )
 
             self._log(f"验证码校验状态: {response.status_code}")
@@ -694,6 +716,9 @@ class RegistrationEngine:
                 "accept": "application/json",
                 "content-type": "application/json",
                 "user-agent": self._OAUTH_UA,
+                "sec-ch-ua": '"Not:A-Brand";v="99", "Google Chrome";v="131", "Chromium";v="131"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
             }
             if self._device_id:
                 headers["oai-device-id"] = self._device_id
@@ -703,6 +728,7 @@ class RegistrationEngine:
                 OPENAI_API_ENDPOINTS["create_account"],
                 headers=headers,
                 json=user_info,
+                impersonate="chrome131",
             )
 
             self._log(f"账户创建状态: {response.status_code}")
