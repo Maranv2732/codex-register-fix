@@ -320,6 +320,7 @@ class DuckMailService(BaseEmailService):
         timeout: int = 120,
         pattern: str = OTP_CODE_PATTERN,
         otp_sent_at: Optional[float] = None,
+        exclude_codes: Optional[set] = None,
     ) -> Optional[str]:
         account_info = self._get_account_info(email=email, email_id=email_id)
         if not account_info:
@@ -333,6 +334,7 @@ class DuckMailService(BaseEmailService):
 
         start_time = time.time()
         seen_message_ids = set()
+        excluded = {str(code).strip() for code in (exclude_codes or set()) if str(code).strip()}
 
         while time.time() - start_time < timeout:
             try:
@@ -368,8 +370,11 @@ class DuckMailService(BaseEmailService):
 
                     match = re.search(pattern, content)
                     if match:
+                        code = match.group(1)
+                        if code in excluded:
+                            continue
                         self.update_status(True)
-                        return match.group(1)
+                        return code
             except Exception as e:
                 logger.debug(f"DuckMail 轮询验证码失败: {e}")
 

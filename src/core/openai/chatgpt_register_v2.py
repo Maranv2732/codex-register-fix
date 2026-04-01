@@ -47,6 +47,20 @@ def random_delay(low=0.3, high=1.0):
     time.sleep(random.uniform(low, high))
 
 
+def _token_preview(token, prefix=12):
+    raw = str(token or "").strip()
+    if not raw:
+        return "missing"
+    return f"len={len(raw)}, prefix={raw[:prefix]}..."
+
+
+def _format_token_snapshot(token_map):
+    parts = []
+    for key in ("access_token", "session_token", "refresh_token", "id_token"):
+        parts.append(f"{key}={_token_preview(token_map.get(key, ''))}")
+    return ", ".join(parts)
+
+
 def seed_oai_device_cookie(session, device_id):
     """在 ChatGPT / OpenAI 相关域上同步设置 oai-did。"""
     for domain in (
@@ -346,6 +360,18 @@ class ChatGPTClient:
             return False, f"/api/auth/session 返回非 JSON: {exc}"
 
         access_token = str(data.get("accessToken") or "").strip()
+        self._log(f"/api/auth/session 字段: {', '.join(sorted(data.keys()))}")
+        self._log(
+            "Session Token 快照: "
+            + _format_token_snapshot(
+                {
+                    "access_token": access_token,
+                    "session_token": data.get("sessionToken") or "",
+                    "refresh_token": data.get("refreshToken") or data.get("refresh_token") or "",
+                    "id_token": data.get("idToken") or data.get("id_token") or "",
+                }
+            )
+        )
         if not access_token:
             return False, "/api/auth/session 未返回 accessToken"
         return True, data
@@ -383,6 +409,8 @@ class ChatGPTClient:
         session_data = session_or_error
         access_token = str(session_data.get("accessToken") or "").strip()
         session_token = str(session_data.get("sessionToken") or session_cookie or "").strip()
+        refresh_token = str(session_data.get("refreshToken") or session_data.get("refresh_token") or "").strip()
+        id_token = str(session_data.get("idToken") or session_data.get("id_token") or "").strip()
         user = session_data.get("user") or {}
         account = session_data.get("account") or {}
         jwt_payload = decode_jwt_payload(access_token)
@@ -401,6 +429,8 @@ class ChatGPTClient:
         normalized = {
             "access_token": access_token,
             "session_token": session_token,
+            "refresh_token": refresh_token,
+            "id_token": id_token,
             "account_id": account_id,
             "user_id": user_id,
             "workspace_id": account_id,
@@ -412,6 +442,8 @@ class ChatGPTClient:
         }
 
         self._log("步骤 4/4: 已从复用会话中提取 accessToken")
+        self._log(f"Session 响应字段: {', '.join(sorted(session_data.keys()))}")
+        self._log(f"Session Token 快照: {_format_token_snapshot(normalized)}")
         if account_id:
             self._log(f"Session Account ID: {account_id}")
         if user_id:

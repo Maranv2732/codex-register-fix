@@ -227,6 +227,20 @@ def _extract_code_from_url(url: str) -> Optional[str]:
         return None
 
 
+def _token_preview(token: Any, prefix: int = 12) -> str:
+    raw = str(token or "").strip()
+    if not raw:
+        return "missing"
+    return f"len={len(raw)}, prefix={raw[:prefix]}..."
+
+
+def _format_token_snapshot(token_map: Dict[str, Any]) -> str:
+    parts = []
+    for key in ("access_token", "session_token", "refresh_token", "id_token"):
+        parts.append(f"{key}={_token_preview(token_map.get(key, ''))}")
+    return ", ".join(parts)
+
+
 @dataclass
 class RegistrationResult:
     """注册结果"""
@@ -282,22 +296,29 @@ class _EmailServiceV2Adapter:
         email: str,
         email_info: Optional[Dict[str, Any]],
         log_fn: Callable[[str], None],
+        used_codes: Optional[set] = None,
     ):
         self.email_service = email_service
         self.email = email
         self.email_info = email_info or {}
         self.log_fn = log_fn
+        self.used_codes = used_codes if used_codes is not None else set()
 
     def wait_for_verification_code(self, email: str, timeout: int = 60, otp_sent_at: Optional[float] = None, exclude_codes=None):
         self.log_fn(f"正在等待邮箱 {email} 的验证码 ({timeout}s)...")
+        ignored_codes = set(self.used_codes)
+        if exclude_codes:
+            ignored_codes.update(str(code).strip() for code in exclude_codes if str(code).strip())
         code = self.email_service.get_verification_code(
             email=self.email,
             email_id=self.email_info.get("service_id"),
             timeout=timeout,
             pattern=OTP_CODE_PATTERN,
             otp_sent_at=otp_sent_at,
+            exclude_codes=ignored_codes,
         )
         if code:
+            self.used_codes.add(code)
             self.log_fn(f"成功获取验证码: {code}")
         return code
 
@@ -356,6 +377,7 @@ class RegistrationEngine:
         self.logs: list = []
         self._otp_sent_at: Optional[float] = None  # OTP 发送时间戳
         self._is_existing_account: bool = False  # 是否为已注册账号（用于自动登录）
+        self._used_verification_codes: set = set()  # 跨注册/登录阶段去重
         self._otp_continue_url: Optional[str] = None  # OTP 验证后的 continue_url
         self._post_auth_continue_url: Optional[str] = None  # 注册完成后的 continue_url
         self._otp_flow_state: Optional[FlowState] = None  # OTP 验证后的流程状态
@@ -363,6 +385,9 @@ class RegistrationEngine:
         self._device_id: Optional[str] = None  # Device ID，所有 API 请求共用
         self._last_oauth_follow_url: Optional[str] = None  # OAuth 跟随后实际落地的 URL
         self._callback_url_from_consent: Optional[str] = None  # 免登录 OAuth 直接拿到的 callback URL
+        self._profile_first_name: str = ""
+        self._profile_last_name: str = ""
+        self._profile_birthdate: str = ""
 
     def _log(self, message: str, level: str = "info"):
         """记录日志"""
@@ -737,9 +762,11 @@ class RegistrationEngine:
                 timeout=120,
                 pattern=OTP_CODE_PATTERN,
                 otp_sent_at=self._otp_sent_at,
+                exclude_codes=self._used_verification_codes,
             )
 
             if code:
+                self._used_verification_codes.add(code)
                 self._log(f"成功获取验证码: {code}")
                 return code
             else:
@@ -1404,12 +1431,8 @@ class RegistrationEngine:
 
     def _perform_oauth_login(self, replace_session: bool = False, preferred_workspace_id: str = "") -> Optional[Dict[str, Any]]:
         """注册完成后执行 V2 OAuth 登录状态机，获取授权 token。"""
-        oauth_session = self.session
-        if oauth_session is None:
-            oauth_session = cffi_requests.Session(impersonate="chrome131")
-            self._log("[OAuth Login] 当前无可复用会话，创建新的 OAuth 会话", "warning")
-        else:
-            self._log("[OAuth Login] 复用注册会话执行完整 OAuth，保留已有 auth cookies")
+        oauth_session = cffi_requests.Session(impersonate="chrome131")
+        self._log("[OAuth Login] 创建独立 ChatGPT 登录会话，避免复用注册态触发异常")
 
         if self.proxy_url:
             oauth_session.proxies = {"http": self.proxy_url, "https": self.proxy_url}
@@ -1444,6 +1467,10 @@ class RegistrationEngine:
             logger=lambda message: self._log(f"[OAuth Login] {message}"),
             sentinel_builder=_build_sentinel_token,
             preferred_workspace_id=preferred_workspace_id,
+            excluded_otp_codes=set(self._used_verification_codes),
+            first_name=self._profile_first_name,
+            last_name=self._profile_last_name,
+            birthdate=self._profile_birthdate,
         )
         token_data = runner.run()
         if token_data and token_data.get("access_token"):
@@ -1451,7 +1478,7 @@ class RegistrationEngine:
                 self.session = oauth_session
             self._log("[OAuth Login] Token 获取成功!")
             return token_data
-        self._log("[OAuth Login] 未获取到 authorization code", "error")
+        self._log("[OAuth Login] 未获取到 ChatGPT Session Token", "error")
         return None
 
     def _extract_account_from_id_token(self, id_token: str) -> Dict[str, str]:
@@ -1750,6 +1777,37 @@ class RegistrationEngine:
             self._log(f"处理 OAuth 回调失败: {e}", "error")
             return None
 
+    def _normalize_direct_oauth_token_data(self, oauth_token_data: Dict[str, Any]) -> Dict[str, Any]:
+        """将直连完整 OAuth 返回值整理为统一 token 结构。"""
+        token_data = dict(oauth_token_data or {})
+        if not token_data.get("session_token"):
+            token_data["session_token"] = self._get_cookie_value("__Secure-next-auth.session-token", "chatgpt.com")
+        if not token_data.get("workspace_id"):
+            token_data["workspace_id"] = token_data.get("account_id") or ""
+        if not token_data.get("email"):
+            token_data["email"] = self.email or ""
+        return token_data
+
+    def _merge_token_data(self, base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
+        """将 overlay 中的非空 token 字段合并到 base。"""
+        merged = dict(base or {})
+        for key in (
+            "refresh_token",
+            "id_token",
+            "access_token",
+            "session_token",
+            "account_id",
+            "workspace_id",
+            "email",
+            "user_id",
+            "token_type",
+            "expires_in",
+        ):
+            value = (overlay or {}).get(key)
+            if value:
+                merged[key] = value
+        return merged
+
     def _run_chatgpt_register_v2(self) -> Optional[Dict[str, Any]]:
         """移植 0330 的注册状态机，直接完成注册并复用会话提取 Token。"""
         try:
@@ -1757,6 +1815,9 @@ class RegistrationEngine:
             user_info = generate_random_user_info()
             first_name, _, last_name = user_info["name"].partition(" ")
             last_name = last_name or "Smith"
+            self._profile_first_name = first_name
+            self._profile_last_name = last_name
+            self._profile_birthdate = user_info["birthdate"]
 
             self._log("3. 使用 0330 注册状态机执行完整注册...")
             self._log(f"执行密码: {self.password}")
@@ -1774,6 +1835,7 @@ class RegistrationEngine:
                 email=self.email or "",
                 email_info=self.email_info,
                 log_fn=self._log,
+                used_codes=self._used_verification_codes,
             )
 
             success, message = client.register_complete_flow(
@@ -1788,38 +1850,59 @@ class RegistrationEngine:
                 self._log(f"V2 注册状态机失败: {message}", "warning")
                 return None
 
-            self._log("13. 优先复用注册会话获取 Token...")
+            self.session = client.session
+            self._device_id = client.device_id
+            self._post_auth_flow_state = client.last_registration_state
+            self._is_existing_account = bool(getattr(client, "is_existing_account", False))
+            self.email = self.email or ""
+
+            if not self._is_existing_account:
+                self._log("13. 新注册完成，直接执行完整 OAuth 流程（会重新验证邮箱）...")
+                direct_oauth_token_data = self._perform_oauth_login(
+                    replace_session=False,
+                    preferred_workspace_id="",
+                )
+                if direct_oauth_token_data and (
+                    direct_oauth_token_data.get("refresh_token") or direct_oauth_token_data.get("id_token")
+                ):
+                    token_data = self._normalize_direct_oauth_token_data(direct_oauth_token_data)
+                    self.email = token_data.get("email") or self.email
+                    self.session_token = token_data.get("session_token") or self.session_token
+                    self._log("13.0 完整 OAuth 成功")
+                    self._log(f"13.0 完整 OAuth Token 快照: {_format_token_snapshot(token_data)}")
+                    return token_data
+                self._log("13.0 完整 OAuth 未拿到 refresh_token/id_token，回退到会话复用链路", "warning")
+
+            self._log("13.1 优先复用注册会话获取 Token...")
             session_ok, token_data = client.reuse_session_and_get_tokens()
             if not session_ok:
                 self._log(f"V2 会话复用失败: {token_data}", "warning")
                 return None
 
-            self.session = client.session
-            self._device_id = client.device_id
-            self._post_auth_flow_state = client.last_registration_state
-            self._is_existing_account = bool(getattr(client, "is_existing_account", False))
             self.email = token_data.get("email") or self.email
             self.session_token = token_data.get("session_token") or self.session_token
+            self._log(f"13.1 会话复用 Token 快照: {_format_token_snapshot(token_data)}")
 
-            self._log("13.1 执行完整 OAuthLoginV2 获取 refresh_token...")
-            oauth_token_data = self._perform_oauth_login(
-                replace_session=False,
-                preferred_workspace_id=token_data.get("workspace_id") or token_data.get("account_id") or "",
-            )
-            if oauth_token_data and oauth_token_data.get("refresh_token"):
-                self._log("13.2 已成功获取 OAuth refresh_token")
-                token_data["refresh_token"] = oauth_token_data.get("refresh_token") or token_data.get("refresh_token", "")
-                token_data["id_token"] = oauth_token_data.get("id_token") or token_data.get("id_token", "")
-                token_data["access_token"] = oauth_token_data.get("access_token") or token_data.get("access_token", "")
-                token_data["account_id"] = oauth_token_data.get("account_id") or token_data.get("account_id", "")
-                token_data["email"] = oauth_token_data.get("email") or token_data.get("email", "")
-            else:
-                self._log("13.2 未获取到 OAuth refresh_token，保留 session_token/access_token 结果", "warning")
+            if self._is_existing_account:
+                self._log("13.2 执行第二阶段 ChatGPT Web 登录获取 Token...")
+                oauth_token_data = self._perform_oauth_login(
+                    replace_session=False,
+                    preferred_workspace_id=token_data.get("workspace_id") or token_data.get("account_id") or "",
+                )
+                if oauth_token_data and oauth_token_data.get("access_token"):
+                    self._log("13.2 已成功获取第二阶段 ChatGPT Token")
+                    self._log(f"13.2 第二阶段 Token 快照: {_format_token_snapshot(oauth_token_data)}")
+                    token_data = self._merge_token_data(token_data, oauth_token_data)
+                else:
+                    self._log("13.2 第二阶段未获取到额外 Token，保留会话复用结果", "warning")
+                    if oauth_token_data:
+                        self._log(f"13.2 第二阶段返回 Token 快照: {_format_token_snapshot(oauth_token_data)}", "warning")
 
             if not token_data.get("workspace_id"):
                 token_data["workspace_id"] = token_data.get("account_id") or ""
             if not token_data.get("email"):
                 token_data["email"] = self.email or ""
+            self._log(f"13.3 最终 Token 快照: {_format_token_snapshot(token_data)}")
             return token_data
         except Exception as e:
             self._log(f"V2 注册状态机异常: {e}", "warning")
