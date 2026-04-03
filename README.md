@@ -1,5 +1,5 @@
 # Codex Register Fix
-
+# 基本已拉闸 等有空了我再看吧
 基于 [codex-manager](https://github.com/cnlimiter/codex-manager) 二次开发，修复了原项目因 OpenAI 授权流程变更导致的注册失败问题。
 
 > **本项目基于 [cnlimiter/codex-manager](https://github.com/cnlimiter/codex-manager) 进行二次开发，原项目采用 MIT 协议开源，感谢原作者的贡献。**
